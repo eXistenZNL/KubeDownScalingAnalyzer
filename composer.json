@@ -1,0 +1,9 @@
+{
+    "require": {
+        "symfony/console": "^4.3",
+        "ext-json": "*"
+    },
+    "autoload": {
+        "classmap": ["kube/"]
+    }
+}
