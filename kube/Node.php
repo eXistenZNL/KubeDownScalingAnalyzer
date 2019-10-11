@@ -16,7 +16,15 @@ class Node
      */
     private $consoleOutput;
 
+    /**
+     * @var Pod[]
+     */
     private $pods;
+
+    /**
+     * @var PodDisruptionBudget[]
+     */
+    private $podDisruptionBudgets;
 
     public function __construct(string $name, ConsoleOutput $consoleOutput)
     {
@@ -33,11 +41,12 @@ class Node
             new TableCell($this->name, ['colspan' => 6])
         ])
             ->setRows([
-                ['Namespace', 'Name', 'Safe to evict', 'Controller', 'Local Volumes', 'Movable', 'Reason'],
+                ['Namespace', 'Name', 'Controller', 'SafeToEvict', 'PDB', 'Local Volumes', 'Movable', 'Reason'],
                 new TableSeparator()
             ]);
 
         foreach ($this->getPods() as $pod) {
+            $pod->setPodDisruptionBudgets($this->podDisruptionBudgets);
             $table->addRow($pod->getInfo());
         }
 
@@ -77,5 +86,10 @@ class Node
         }
 
         return $this->pods;
+    }
+
+    public function setPodDisruptionBudgets(array $podDisruptionBudgets)
+    {
+        $this->podDisruptionBudgets = $podDisruptionBudgets;
     }
 }

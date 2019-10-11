@@ -26,6 +26,16 @@ class Pod
      */
     private $podInfo;
 
+    /**
+     * @var PodDisruptionBudget[]
+     */
+    private $podDisruptionBudgets;
+
+    /**
+     * @var PodDisruptionBudget|false
+     */
+    private $matchingPodDisruptionBudget;
+
     public function __construct(
         string $namespace,
         string $name,
@@ -38,21 +48,27 @@ class Pod
 
     public function setPodDisruptionBudgets(array $podDisruptionBudgets)
     {
-
+        $this->podDisruptionBudgets = $podDisruptionBudgets;
     }
 
     public function getInfo(): array
     {
         $unmovableReason = $this->getUnmovableReason();
 
+        $controllerType = $this->getControllerType();
+        if ($this->getControllerType() === 'Job') {
+            $controllerType .= '(' . $this->getPodInfo()['status']['phase'] . ')';
+        }
+
         return [
             $this->namespace,
             $this->name,
+            $controllerType ?? '-',
             $this->isSafeToEvict() ? 'Yes' : 'No',
-            $this->getControllerType() ?? '-',
+            $this->getMatchingPodDisruptionBudget() instanceof PodDisruptionBudget ? 'Yes' : 'No',
             is_null($this->getLocalVolumes()) ? 'Yes' : 'No',
-            $unmovableReason === null ? 'Yes' : '<fg=red>No</>',
-            $unmovableReason
+            $unmovableReason === null ? '<fg=green>Yes</>' : '<fg=red>No</>',
+            $unmovableReason,
         ];
     }
 
@@ -81,6 +97,38 @@ class Pod
         return $this->podInfo;
     }
 
+    private function getUnmovableReason(): ?string
+    {
+        if ($this->getControllerType() === 'DaemonSet') {
+            return null;
+        }
+
+        if ($this->getControllerType() === 'Job' && $this->getStatusPhase() !== 'Running') {
+            return null;
+        }
+
+        $podDisruptionBudget = $this->getMatchingPodDisruptionBudget();
+
+        if ($this->namespace === 'kube-system' && $podDisruptionBudget === null) {
+            return 'In kube-system namespace but without a pod disruption budget';
+        }
+
+        if ($podDisruptionBudget instanceof PodDisruptionBudget && $podDisruptionBudget->getAllowedDisruptions() === "0") {
+            return 'No allowed disruptions in pod disruption budget';
+        }
+
+        if ($this->getControllerType() === null && !$this->isSafeToEvict()) {
+            return 'Not backed by a controller object and is not safe to evict';
+        }
+
+        $localVolumes = $this->getLocalVolumes();
+        if (!is_null($localVolumes) && !$this->isSafeToEvict()) {
+            return 'Has local volumes and is not safe to evict';
+        }
+
+        return null;
+    }
+
     private function getControllerType(): ?string
     {
         if (!isset($this->getPodInfo()['metadata']['ownerReferences'][0])) {
@@ -103,6 +151,13 @@ class Pod
         return true;
     }
 
+    private function getLabels(): ?array
+    {
+        $labels = $this->getPodInfo()['metadata']['labels'];
+        ksort($labels);
+        return $labels;
+    }
+
     private function getLocalVolumes(): ?array
     {
         if (!isset($this->getPodInfo()['spec']['volumes'])) {
@@ -123,32 +178,29 @@ class Pod
         return count($volumes) > 0 ? $volumes : null;
     }
 
-    private function getMatchingPodDisruptionBudget(): ?PodDisruptionBudget
+    private function getStatusPhase(): string
     {
-        return null;
+        return $this->getPodInfo()['status']['phase'];
     }
 
-    private function getUnmovableReason(): ?string
+    private function getMatchingPodDisruptionBudget(): ?PodDisruptionBudget
     {
-        if ($this->namespace === 'kube-system' && $this->getMatchingPodDisruptionBudget() === null) {
-            return 'In kube-system namespace without pod disruption budget';
+        if ($this->matchingPodDisruptionBudget instanceof PodDisruptionBudget) {
+            return $this->matchingPodDisruptionBudget;
         }
 
-        if ($this->getControllerType() === 'Daemonset') {
+        if ($this->matchingPodDisruptionBudget === false) {
             return null;
         }
 
-        if ($this->getControllerType() === null && !$this->isSafeToEvict()) {
-            return 'Not backed by a controller object and is not safe to evict';
+        foreach ($this->podDisruptionBudgets as $podDisruptionBudget) {
+            if (count(array_diff($podDisruptionBudget->getLabelSelector(), $this->getLabels())) === 0) {
+                $this->matchingPodDisruptionBudget = $podDisruptionBudget;
+                return $this->matchingPodDisruptionBudget;
+            }
         }
 
-        $localVolumes = $this->getLocalVolumes();
-        if (!is_null($localVolumes) && !$this->isSafeToEvict()) {
-            return sprintf(
-                'Has local volumes and is not safe to evict:' . PHP_EOL . '- %s',
-                http_build_query($localVolumes, '', PHP_EOL . '- ')
-            );
-        }
+        $this->matchingPodDisruptionBudget = false;
 
         return null;
     }

@@ -18,24 +18,19 @@ class PodDisruptionBudget
     private $name;
 
     /**
-     * @var string
+     * @var int
      */
     private $minAvailable;
 
     /**
-     * @var string
+     * @var int
      */
     private $maxUnavailable;
 
     /**
-     * @var string
+     * @var int
      */
     private $allowedDisruptions;
-
-    /**
-     * @var string
-     */
-    private $age;
 
     /**
      * @var ConsoleOutput
@@ -45,15 +40,15 @@ class PodDisruptionBudget
     /**
      * @var array
      */
-    private $podDisruptionBudgetInfo;
+    private $labelSelector;
 
     public function __construct(
         string $namespace,
         string $name,
-        string $minAvailable,
-        string $maxUnavailable,
-        string $allowedDisruptions,
-        string $age,
+        int $minAvailable,
+        int $maxUnavailable,
+        int $allowedDisruptions,
+        array $labelSelector,
         ConsoleOutput $consoleOutput
     ) {
         $this->namespace = $namespace;
@@ -61,7 +56,7 @@ class PodDisruptionBudget
         $this->minAvailable = $minAvailable;
         $this->maxUnavailable = $maxUnavailable;
         $this->allowedDisruptions = $allowedDisruptions;
-        $this->age = $age;
+        $this->labelSelector = $labelSelector;
         $this->consoleOutput = $consoleOutput;
     }
 
@@ -76,34 +71,24 @@ class PodDisruptionBudget
                 ['NinAvailable', $this->minAvailable],
                 ['MaxUnavailable', $this->maxUnavailable],
                 ['AllowedDisruptions', $this->allowedDisruptions],
-                ['Age', $this->age],
             ]);
 
         $table->render();
     }
 
-    public function getSelector(): array
+    /**
+     * @return array
+     */
+    public function getLabelSelector(): array
     {
-        $selector = $this->getPodDisruptionBudgetInfo()['spec']['selector']['matchLabels'];
-        ksort($selector);
-        return $selector;
+        return $this->labelSelector;
     }
 
-    private function getPodDisruptionBudgetInfo()
+    /**
+     * @return string
+     */
+    public function getAllowedDisruptions(): int
     {
-        if ($this->podDisruptionBudgetInfo !== null){
-            return $this->podDisruptionBudgetInfo;
-        }
-
-        $cacheFile = dirname(__DIR__) . '/cache/pod-disruption-budget-' . $this->name . '.cache';
-
-        if (file_exists($cacheFile)) {
-            $textPodDisruptionBudgets = file_get_contents($cacheFile);
-        } else {
-            $command = 'kubectl -n ' . $this->namespace . ' get pdb ' . $this->name . ' -o json';
-            $textPodDisruptionBudgets = shell_exec($command);
-            file_put_contents($cacheFile, $textPodDisruptionBudgets);
-        }
-        $this->podDisruptionBudgetInfo = json_decode($textPodDisruptionBudgets, true);
+        return $this->allowedDisruptions;
     }
 }

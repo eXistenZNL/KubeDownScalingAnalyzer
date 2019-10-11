@@ -28,11 +28,8 @@ class Cluster
         }
 
         foreach ($this->getNodes() as $node) {
+            $node->setPodDisruptionBudgets($this->getPodDisruptionBudgets());
             $node->getInfo();
-            foreach ($node->getPods() as $pod) {
-                $pod->setPodDisruptionBudgets($this->getPodDisruptionBudgets());
-                $pod->getInfo();
-            }
         }
     }
 
@@ -73,33 +70,30 @@ class Cluster
         $cacheFile = dirname(__DIR__) . '/cache/pdb.cache';
 
         if (file_exists($cacheFile)) {
-            $textPodDisruptionBudgets = file_get_contents($cacheFile);
+            $pdbInfoText = file_get_contents($cacheFile);
         } else {
-            $textPodDisruptionBudgets = shell_exec('kubectl get pdb -A | tail -n +2');
-            file_put_contents($cacheFile, $textPodDisruptionBudgets);
+            $pdbInfoText = shell_exec('kubectl get pdb -A -ojson');
+            file_put_contents($cacheFile, $pdbInfoText);
         }
 
-        $textPodDisruptionBudgets = array_filter(explode(PHP_EOL, $textPodDisruptionBudgets), function ($value) {
-            return $value === null;
-        });
+        $pdbInfoArray = json_decode($pdbInfoText, true);
 
         $podDisruptionBudgets = [];
 
-        foreach ($textPodDisruptionBudgets as $textPodDisruptionBudget) {
-            $fields = array_values(array_filter(explode(' ', $textPodDisruptionBudget)));
-
+        foreach ($pdbInfoArray['items'] as $pdbInfo) {
             $podDisruptionBudget = new PodDisruptionBudget(
-                $fields[0],
-                $fields[1],
-                $fields[2],
-                $fields[3],
-                $fields[4],
-                $fields[5],
+                $pdbInfo['metadata']['namespace'],
+                $pdbInfo['metadata']['name'],
+                $pdbInfo['spec']['minAvailable'] ?? 0,
+                $pdbInfo['spec']['maxUnavailable'] ?? 0,
+                $pdbInfo['status']['disruptionsAllowed'],
+                $pdbInfo['spec']['selector']['matchLabels'],
                 $this->consoleOutput
             );
             $podDisruptionBudgets[] = $podDisruptionBudget;
         }
 
+        $this->podDisruptionBudgets = $podDisruptionBudgets;
         return $podDisruptionBudgets;
     }
 }
