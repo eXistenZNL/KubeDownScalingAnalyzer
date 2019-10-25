@@ -66,7 +66,7 @@ class Pod
             $controllerType ?? '-',
             $this->isSafeToEvict() ? 'Yes' : 'No',
             $this->getMatchingPodDisruptionBudget() instanceof PodDisruptionBudget ? 'Yes' : 'No',
-            is_null($this->getLocalVolumes()) ? 'Yes' : 'No',
+            is_null($this->getLocalVolumes()) ? 'No' : 'Yes',
             $unmovableReason === null ? '<fg=green>Yes</>' : '<fg=red>No</>',
             $unmovableReason,
         ];
